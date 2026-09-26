@@ -9,7 +9,7 @@ Guidelines:
 * If the code, requirements, or intended behavior remain ambiguous after inspection, ask rather than assume.
 * For every question:
 
-    * explain clearly why it matters, relevant context/trade-offs, and what later decisions depend on it;
+    * explain clearly why it matters, relevant context/trade-offs, and what later decisions depend on it — place these explanations inside the question text itself, not in internal thinking or reasoning;
     * provide your recommended answer and briefly explain why.
 * Walk through all materially relevant branches of the design tree, while avoiding questions that do not affect implementation or behavior.
 * Ask all user-facing questions in the language currently used in the conversation.
