@@ -105,15 +105,35 @@ func main() {
 		if arg == "--dry-run" {
 			metaFile := meta.GetMetaFile()
 			var m meta.PatchMeta
+			metaReadOk := false
 			if data, err := os.ReadFile(metaFile); err == nil {
-				_ = json.Unmarshal(data, &m)
+				if err := json.Unmarshal(data, &m); err == nil {
+					metaReadOk = true
+				}
 			}
 			curSHA, _ := meta.FileSHA256(realBin)
-			if m.SHA256 != "" && curSHA == m.SHA256 {
+			targetPrompts := meta.GetTargetPromptsSHA256([]string{"grill-me"})
+			promptsOk := metaReadOk && meta.PromptsMatch(m.Prompts, targetPrompts)
+
+			if metaReadOk && m.SHA256 != "" && curSHA == m.SHA256 {
+				if promptsOk {
+					fmt.Println("════════════════════════════════════════════════════════════")
+					fmt.Printf("Binary: %s\n", realBin)
+					fmt.Printf("SHA256: %s\n", curSHA)
+					fmt.Println("Prompts: target fixed prompts match record ✓")
+					fmt.Println("Status: SHA256 and prompt hash match patched record ✓ (no patch needed)")
+					os.Exit(0)
+				}
 				fmt.Println("════════════════════════════════════════════════════════════")
 				fmt.Printf("Binary: %s\n", realBin)
-				fmt.Printf("SHA256: %s\n", curSHA)
-				fmt.Println("Status: SHA256 matches patched record ✓ (no patch needed)")
+				fmt.Printf("SHA256: %s (patched with previous prompt version)\n", curSHA)
+				fmt.Println("Status: Prompt .fixed changed (old patch detected). Simulating dry-run re-patch...")
+				logMsg, err := patcher.PatchBinary(realBin, true)
+				fmt.Print(logMsg)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
+					os.Exit(1)
+				}
 				os.Exit(0)
 			}
 

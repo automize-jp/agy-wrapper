@@ -2,18 +2,56 @@ package patcher
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"agy-wrapper/src/parser"
 	"agy-wrapper/src/prompt"
 )
+
+func GetBinaryVersion(binPath string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binPath, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func ValidateBackup(realPath, origPath string, realData, origData, stored []byte) (bool, string) {
+	// 1. Size check
+	if len(origData) != len(realData) {
+		return false, fmt.Sprintf("size mismatch: backup is %d bytes, target binary is %d bytes (different agy build)", len(origData), len(realData))
+	}
+
+	// 2. Pristine prompt check
+	_, _, origExact := FindPrompt(origData, stored)
+	if !origExact {
+		return false, "backup binary does not contain the pristine unpatched prompt (file may be corrupted or already patched)"
+	}
+
+	// 3. Executable version check
+	realVer, errReal := GetBinaryVersion(realPath)
+	origVer, errOrig := GetBinaryVersion(origPath)
+	if errReal == nil && errOrig == nil && realVer != "" && origVer != "" {
+		if realVer != origVer {
+			return false, fmt.Sprintf("version mismatch: backup version '%s' does not match target binary version '%s'", origVer, realVer)
+		}
+	}
+
+	return true, ""
+}
 
 func FindNullRegion(data []byte, minSize int) (int, int, bool) {
 	probeLen := minSize
@@ -256,7 +294,18 @@ func PatchBinary(binaryPath string, dryRun bool) (string, error) {
 		p("[%s] Found %d bytes at offset 0x%x", toolName, len(extracted), start)
 		p("[%s] SHA256: %s", toolName, extractedSum)
 
-		if !exact {
+		if exact {
+			// 1. Binary is unpatched (clean upstream binary)
+			p("[%s] Target binary is unpatched (clean upstream binary).", toolName)
+			if !dryRun {
+				// Force create / overwrite backup from pristine data
+				p("[%s] Force creating backup → %s", toolName, originalPath)
+				if err := os.WriteFile(originalPath, data, 0755); err != nil {
+					return out.String(), fmt.Errorf("failed to create backup %s: %w", originalPath, err)
+				}
+			}
+		} else {
+			// 2. Binary is patched (exact == false)
 			fixedTrimmed := bytes.TrimRight(fixed, "\r\n")
 			extractedTrimmed := bytes.TrimRight(extracted, "\r\n")
 			if bytes.Equal(extractedTrimmed, fixedTrimmed) {
@@ -264,24 +313,38 @@ func PatchBinary(binaryPath string, dryRun bool) (string, error) {
 				continue
 			}
 
-			// If a clean original backup binary exists, re-base the patch from the backup
-			if origData, errOrig := os.ReadFile(originalPath); errOrig == nil {
-				origStart, origEnd, origExact := FindPrompt(origData, stored)
-				if origExact {
-					p("[%s] Existing binary has earlier patch. Re-basing from %s...", toolName, originalPath)
-					buf = make([]byte, len(origData))
-					copy(buf, origData)
-					data = origData
-					info, _ = parser.ParseBinary(buf)
-					start = origStart
-					end = origEnd
-					goto applyPatch
-				}
+			// Binary has an OLD patch
+			p("[%s] Old patch detected in target binary (prompt differs from current fixed target).", toolName)
+
+			// Check if .original backup exists
+			if _, errStat := os.Stat(originalPath); os.IsNotExist(errStat) {
+				return out.String(), fmt.Errorf("[%s] Target binary '%s' contains an old patch, but backup '%s' does not exist.\nCannot safely restore and re-patch.\nTo recover:\n  1. Run update directly on target binary: %s update\n  2. Or download a fresh upstream binary to replace %s", toolName, realPath, originalPath, realPath, realPath)
 			}
 
-			return out.String(), fmt.Errorf("[%s] Checksum mismatch — upstream prompt has changed", toolName)
+			// Read and validate backup
+			origData, errOrig := os.ReadFile(originalPath)
+			if errOrig != nil {
+				return out.String(), fmt.Errorf("[%s] Failed to read backup %s: %w", toolName, originalPath, errOrig)
+			}
+
+			ok, reason := ValidateBackup(realPath, originalPath, data, origData, stored)
+			if !ok {
+				return out.String(), fmt.Errorf("[%s] Backup '%s' is invalid (%s).\nCannot safely restore and re-patch.\nTo recover:\n  1. Run update directly on target binary: %s update\n  2. Or download a fresh upstream binary to replace %s", toolName, originalPath, reason, realPath, realPath)
+			}
+
+			p("[%s] Valid backup verified (%s). Restoring and re-basing patch...", toolName, originalPath)
+			buf = make([]byte, len(origData))
+			copy(buf, origData)
+			data = origData
+			info, _ = parser.ParseBinary(buf)
+			origStart, origEnd, origExact := FindPrompt(buf, stored)
+			if !origExact {
+				return out.String(), fmt.Errorf("[%s] Internal error: backup prompt search failed after validation", toolName)
+			}
+			start = origStart
+			end = origEnd
 		}
-	applyPatch:
+
 		p("[%s] Checksum OK ✓", toolName)
 
 		logMsg, err := ApplyContent(buf, info, start, end, fixed, dryRun)
