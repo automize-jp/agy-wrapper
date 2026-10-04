@@ -20,15 +20,27 @@ func (info *BinaryInfo) parseMachO() {
 		cmd := binary.LittleEndian.Uint32(d[off : off+4])
 		cmdsize := binary.LittleEndian.Uint32(d[off+4 : off+8])
 		if cmd == 0x19 { // LC_SEGMENT_64
-			if int(off+56) <= len(d) {
+			if int(off+64) <= len(d) {
 				vmaddr := binary.LittleEndian.Uint64(d[off+24 : off+32])
 				fileoff := binary.LittleEndian.Uint64(d[off+40 : off+48])
 				filesize := binary.LittleEndian.Uint64(d[off+48 : off+56])
+				initprot := binary.LittleEndian.Uint32(d[off+60 : off+64])
 				info.Segments = append(info.Segments, Segment{
 					FileOff: fileoff,
 					VAddr:   vmaddr,
 					Size:    filesize,
 				})
+				if info.SegmentFlags == nil {
+					info.SegmentFlags = make(map[uint64]uint32)
+				}
+				info.SegmentFlags[fileoff] = initprot
+				if (initprot&2) == 0 && (initprot&4) == 0 && filesize >= 128 {
+					info.RodataRegions = append(info.RodataRegions, RodataRegion{
+						FileOff: fileoff,
+						Size:    filesize,
+						VAddr:   vmaddr,
+					})
+				}
 			}
 		}
 		off += cmdsize

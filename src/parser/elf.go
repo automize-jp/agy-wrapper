@@ -22,6 +22,7 @@ func (info *BinaryInfo) parseELF() {
 		}
 		p_type := binary.LittleEndian.Uint32(d[off : off+4])
 		if p_type == 1 { // PT_LOAD
+			p_flags := binary.LittleEndian.Uint32(d[off+4 : off+8])
 			p_offset := binary.LittleEndian.Uint64(d[off+8 : off+16])
 			p_vaddr := binary.LittleEndian.Uint64(d[off+16 : off+24])
 			p_filesz := binary.LittleEndian.Uint64(d[off+32 : off+40])
@@ -30,6 +31,10 @@ func (info *BinaryInfo) parseELF() {
 				VAddr:   p_vaddr,
 				Size:    p_filesz,
 			})
+			if info.SegmentFlags == nil {
+				info.SegmentFlags = make(map[uint64]uint32)
+			}
+			info.SegmentFlags[p_offset] = p_flags
 		}
 	}
 
@@ -59,15 +64,46 @@ func (info *BinaryInfo) parseELF() {
 			break
 		}
 		sh_name_idx := binary.LittleEndian.Uint32(d[off : off+4])
+		sh_type := binary.LittleEndian.Uint32(d[off+4 : off+8])
+		sh_flags := binary.LittleEndian.Uint64(d[off+8 : off+16])
+		sh_addr := binary.LittleEndian.Uint64(d[off+16 : off+24])
+		sh_offset := binary.LittleEndian.Uint64(d[off+24 : off+32])
+		sh_size := binary.LittleEndian.Uint64(d[off+32 : off+40])
+
 		if int(sh_name_idx) < len(shstrtab) {
 			end := bytes.IndexByte(shstrtab[sh_name_idx:], 0x00)
 			if end != -1 {
 				name := string(shstrtab[sh_name_idx : int(sh_name_idx)+end])
 				if name == ".rela.dyn" {
-					info.RelaDynOff = binary.LittleEndian.Uint64(d[off+24 : off+32])
-					info.RelaDynSz = binary.LittleEndian.Uint64(d[off+32 : off+40])
-					break
+					info.RelaDynOff = sh_offset
+					info.RelaDynSz = sh_size
 				}
+			}
+		}
+
+		// SHT_PROGBITS = 1, SHF_ALLOC = 2, SHF_WRITE = 1, SHF_EXECINSTR = 4
+		// Read-only non-executable data sections like .rodata and .lrodata
+		if sh_type == 1 && (sh_flags&2) != 0 && (sh_flags&1) == 0 && (sh_flags&4) == 0 {
+			if sh_size >= 128 {
+				info.RodataRegions = append(info.RodataRegions, RodataRegion{
+					FileOff: sh_offset,
+					Size:    sh_size,
+					VAddr:   sh_addr,
+				})
+			}
+		}
+	}
+
+	if len(info.RodataRegions) == 0 {
+		for _, seg := range info.Segments {
+			flags := info.SegmentFlags[seg.FileOff]
+			// PF_W = 2, PF_X = 1
+			if (flags&2) == 0 && (flags&1) == 0 && seg.Size >= 128 {
+				info.RodataRegions = append(info.RodataRegions, RodataRegion{
+					FileOff: seg.FileOff,
+					Size:    seg.Size,
+					VAddr:   seg.VAddr,
+				})
 			}
 		}
 	}

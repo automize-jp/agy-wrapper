@@ -20,19 +20,27 @@ type PESection struct {
 	Characteristics uint32
 }
 
+type RodataRegion struct {
+	FileOff uint64
+	Size    uint64
+	VAddr   uint64
+}
+
 type PatchTarget struct {
 	Kind   string
 	Offset uint64
 }
 
 type BinaryInfo struct {
-	Format     string // "pe", "elf", "macho", "macho32"
-	Segments   []Segment
-	PESections []PESection
-	RelaDynOff uint64
-	RelaDynSz  uint64
-	ImageBase  uint64
-	Data       []byte
+	Format        string // "pe", "elf", "macho", "macho32"
+	Segments      []Segment
+	SegmentFlags  map[uint64]uint32
+	RodataRegions []RodataRegion
+	PESections    []PESection
+	RelaDynOff    uint64
+	RelaDynSz     uint64
+	ImageBase     uint64
+	Data          []byte
 }
 
 func ParseBinary(d []byte) (*BinaryInfo, error) {

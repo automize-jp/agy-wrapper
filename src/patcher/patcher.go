@@ -53,7 +53,7 @@ func ValidateBackup(realPath, origPath string, realData, origData, stored []byte
 	return true, ""
 }
 
-func FindNullRegion(data []byte, minSize int) (int, int, bool) {
+func FindNullRegion(info *parser.BinaryInfo, data []byte, minSize int) (int, int, bool) {
 	probeLen := minSize
 	if probeLen > 4096 {
 		probeLen = 4096
@@ -63,6 +63,46 @@ func FindNullRegion(data []byte, minSize int) (int, int, bool) {
 	bestStart := -1
 	bestEnd := -1
 	bestSize := 0
+
+	if info != nil && len(info.RodataRegions) > 0 {
+		for _, reg := range info.RodataRegions {
+			regStart := int(reg.FileOff)
+			regEnd := int(reg.FileOff + reg.Size)
+			if regEnd > len(data) {
+				regEnd = len(data)
+			}
+			pos := bytes.Index(data[regStart:regEnd], probe)
+			for pos >= 0 {
+				absPos := regStart + pos
+				start := absPos
+				for start > regStart && data[start-1] == 0 {
+					start--
+				}
+				end := absPos + len(probe)
+				for end < regEnd && data[end] == 0 {
+					end++
+				}
+				sz := end - start
+				if sz >= minSize && sz > bestSize {
+					bestStart = start
+					bestEnd = end
+					bestSize = sz
+				}
+				nextSearch := end
+				if nextSearch >= regEnd {
+					break
+				}
+				nextPos := bytes.Index(data[nextSearch:regEnd], probe)
+				if nextPos < 0 {
+					break
+				}
+				pos = (nextSearch - regStart) + nextPos
+			}
+		}
+		if bestStart != -1 {
+			return bestStart, bestEnd, true
+		}
+	}
 
 	i := 0
 	for i < len(data) {
@@ -197,9 +237,33 @@ func ApplyContent(buf []byte, info *parser.BinaryInfo, start int, end int, newCo
 		logMsg.WriteString(fmt.Sprintf("    %s at file offset 0x%x\n", t.Kind, t.Offset))
 	}
 
-	nullStart, nullEnd, found := FindNullRegion(buf, newLen+64)
+	nullStart, nullEnd, found := FindNullRegion(info, buf, newLen+64)
 	if !found {
 		return logMsg.String(), errors.New("no null region large enough")
+	}
+
+	var targetSeg *parser.Segment
+	for _, seg := range info.Segments {
+		if uint64(nullStart) >= seg.FileOff && uint64(nullStart+newLen) <= seg.FileOff+seg.Size {
+			targetSeg = &seg
+			break
+		}
+	}
+	if targetSeg == nil {
+		return logMsg.String(), fmt.Errorf("null region offset 0x%x is outside segment file bounds", nullStart)
+	}
+
+	if info.SegmentFlags != nil {
+		flags := info.SegmentFlags[targetSeg.FileOff]
+		isWritable := false
+		if info.Format == "elf" || info.Format == "macho" || info.Format == "macho32" {
+			isWritable = (flags & 2) != 0 // PF_W or VM_PROT_WRITE
+		} else if info.Format == "pe" {
+			isWritable = (flags & 0x80000000) != 0 // IMAGE_SCN_MEM_WRITE
+		}
+		if isWritable {
+			return logMsg.String(), fmt.Errorf("unsafe relocation: target offset 0x%x is inside a writable segment", nullStart)
+		}
 	}
 
 	newVA, ok := info.FileToVA(uint64(nullStart))

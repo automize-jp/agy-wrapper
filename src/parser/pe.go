@@ -51,6 +51,18 @@ func (info *BinaryInfo) parsePE(peOff uint32) {
 				Name:            name,
 				Characteristics: characteristics,
 			})
+			if info.SegmentFlags == nil {
+				info.SegmentFlags = make(map[uint64]uint32)
+			}
+			info.SegmentFlags[uint64(rawOffset)] = characteristics
+			// IMAGE_SCN_MEM_WRITE = 0x80000000, IMAGE_SCN_MEM_EXECUTE = 0x20000000
+			if (characteristics&0x80000000) == 0 && (characteristics&0x20000000) == 0 && rawSize >= 128 {
+				info.RodataRegions = append(info.RodataRegions, RodataRegion{
+					FileOff: uint64(rawOffset),
+					Size:    uint64(rawSize),
+					VAddr:   vaddr,
+				})
+			}
 		}
 	}
 }
