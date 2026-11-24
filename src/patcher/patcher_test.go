@@ -66,3 +66,67 @@ func TestValidateBackup_Valid(t *testing.T) {
 		t.Fatalf("expected ValidateBackup to succeed, but failed with: %s", reason)
 	}
 }
+
+func TestStringReplacements_EqualLengths(t *testing.T) {
+	for _, rep := range StringReplacements {
+		if len(rep.Old) != len(rep.New) {
+			t.Fatalf("replacement %q has unequal lengths: old=%d, new=%d", rep.Name, len(rep.Old), len(rep.New))
+		}
+	}
+}
+
+func TestReplaceStringInPlace_ReplacesAllOccurrences(t *testing.T) {
+	oldURL := "https://play.googleapis.com/log"
+	newURL := "http://0.0.0.0/logging-disabled"
+	orig := []byte("prefix\x00" + oldURL + "\x00middle\x00" + oldURL + "\x00suffix")
+
+	dryBuf := append([]byte(nil), orig...)
+	count, msg, err := ReplaceStringInPlace(dryBuf, oldURL, newURL, true)
+	if err != nil {
+		t.Fatalf("unexpected error in dry-run: %v", err)
+	}
+	if count != 2 || !strings.Contains(msg, "Replaced 2 occurrence(s)") {
+		t.Fatalf("expected 2 occurrences in dry-run, got count=%d msg=%q", count, msg)
+	}
+	if string(dryBuf) != string(orig) {
+		t.Fatalf("dry-run mutated buffer")
+	}
+
+	buf := append([]byte(nil), orig...)
+	count, msg, err = ReplaceStringInPlace(buf, oldURL, newURL, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 2 || !strings.Contains(msg, "Replaced 2 occurrence(s)") {
+		t.Fatalf("expected 2 occurrences, got count=%d msg=%q", count, msg)
+	}
+	expected := "prefix\x00" + newURL + "\x00middle\x00" + newURL + "\x00suffix"
+	if string(buf) != expected {
+		t.Fatalf("unexpected buffer content:\ngot:  %q\nwant: %q", string(buf), expected)
+	}
+}
+
+func TestReplaceStringInPlace_AlreadyPatchedAndMissing(t *testing.T) {
+	oldURL := "https://play.googleapis.com/log"
+	newURL := "http://0.0.0.0/logging-disabled"
+
+	alreadyBuf := []byte("prefix\x00" + newURL + "\x00suffix")
+	count, msg, err := ReplaceStringInPlace(alreadyBuf, oldURL, newURL, false)
+	if err != nil || count != 0 || !strings.Contains(msg, "Already patched") {
+		t.Fatalf("expected already patched, got count=%d msg=%q err=%v", count, msg, err)
+	}
+
+	missingBuf := []byte("prefix\x00something-else\x00suffix")
+	count, msg, err = ReplaceStringInPlace(missingBuf, oldURL, newURL, false)
+	if err != nil || count != 0 || !strings.Contains(msg, "not found (skipped)") {
+		t.Fatalf("expected skipped, got count=%d msg=%q err=%v", count, msg, err)
+	}
+}
+
+func TestReplaceStringInPlace_LengthMismatch(t *testing.T) {
+	buf := []byte("abcdef")
+	_, _, err := ReplaceStringInPlace(buf, "abc", "abcd", false)
+	if err == nil {
+		t.Fatalf("expected error on length mismatch, got nil")
+	}
+}

@@ -18,6 +18,52 @@ import (
 	"agy-wrapper/src/prompt"
 )
 
+type StringReplacement struct {
+	Name string
+	Old  string
+	New  string
+}
+
+var StringReplacements = []StringReplacement{
+	{
+		Name: "disable-play-logging",
+		Old:  "https://play.googleapis.com/log",
+		New:  "http://0.0.0.0/logging-disabled",
+	},
+}
+
+func ReplaceStringInPlace(buf []byte, oldStr, newStr string, dryRun bool) (int, string, error) {
+	if len(oldStr) != len(newStr) {
+		return 0, "", fmt.Errorf("in-place string replacement requires equal lengths: old=%d, new=%d", len(oldStr), len(newStr))
+	}
+
+	oldBytes := []byte(oldStr)
+	newBytes := []byte(newStr)
+	count := 0
+	searchPos := 0
+	for {
+		idx := bytes.Index(buf[searchPos:], oldBytes)
+		if idx < 0 {
+			break
+		}
+		absIdx := searchPos + idx
+		if !dryRun {
+			copy(buf[absIdx:absIdx+len(newBytes)], newBytes)
+		}
+		count++
+		searchPos = absIdx + len(oldBytes)
+	}
+
+	if count == 0 {
+		if bytes.Contains(buf, newBytes) {
+			return 0, "  Already patched ✓\n", nil
+		}
+		return 0, "  Target string not found (skipped)\n", nil
+	}
+
+	return count, fmt.Sprintf("  Replaced %d occurrence(s) in-place ✓\n", count), nil
+}
+
 func GetBinaryVersion(binPath string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -415,6 +461,15 @@ func PatchBinary(binaryPath string, dryRun bool) (string, error) {
 		out.WriteString(logMsg)
 		if err != nil {
 			return out.String(), fmt.Errorf("[%s] Failed to apply patch: %w", toolName, err)
+		}
+	}
+
+	for _, rep := range StringReplacements {
+		p("\n[%s] Processing string replacement...", rep.Name)
+		_, logMsg, err := ReplaceStringInPlace(buf, rep.Old, rep.New, dryRun)
+		out.WriteString(logMsg)
+		if err != nil {
+			return out.String(), fmt.Errorf("[%s] Failed to apply string replacement: %w", rep.Name, err)
 		}
 	}
 

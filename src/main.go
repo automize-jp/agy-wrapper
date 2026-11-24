@@ -113,7 +113,8 @@ func main() {
 			}
 			curSHA, _ := meta.FileSHA256(realBin)
 			targetPrompts := meta.GetTargetPromptsSHA256([]string{"grill-me"})
-			promptsOk := metaReadOk && meta.PromptsMatch(m.Prompts, targetPrompts)
+			targetPatches := meta.GetTargetStringPatchesSHA256()
+			promptsOk := metaReadOk && meta.PromptsMatch(m.Prompts, targetPrompts) && meta.PromptsMatch(m.Patches, targetPatches)
 
 			if metaReadOk && m.SHA256 != "" && curSHA == m.SHA256 {
 				if promptsOk {

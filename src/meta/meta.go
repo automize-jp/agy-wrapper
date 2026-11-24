@@ -20,6 +20,7 @@ type PatchMeta struct {
 	Mtime   int64             `json:"mtime"`
 	SHA256  string            `json:"sha256"`
 	Prompts map[string]string `json:"prompts,omitempty"`
+	Patches map[string]string `json:"patches,omitempty"`
 }
 
 func GetMetaFile() string {
@@ -65,6 +66,15 @@ func GetTargetPromptsSHA256(tools []string) map[string]string {
 	return res
 }
 
+func GetTargetStringPatchesSHA256() map[string]string {
+	res := make(map[string]string)
+	for _, r := range patcher.StringReplacements {
+		h := sha256.Sum256([]byte(r.Old + "\x00" + r.New))
+		res[r.Name] = hex.EncodeToString(h[:])
+	}
+	return res
+}
+
 func PromptsMatch(stored map[string]string, current map[string]string) bool {
 	if len(current) == 0 {
 		return true
@@ -97,10 +107,11 @@ func EnsurePatchedSilently(realBin string) {
 
 	tools := []string{"grill-me"}
 	targetPrompts := GetTargetPromptsSHA256(tools)
+	targetPatches := GetTargetStringPatchesSHA256()
 
-	// 1. Fast Path (0ms): If size, mtime match AND target prompts match -> Binary has not changed
+	// 1. Fast Path (0ms): If size, mtime match AND target prompts/patches match -> Binary has not changed
 	if metaReadOk && m.RealBin == realBin && m.Size == fi.Size() && m.Mtime == fi.ModTime().Unix() {
-		if PromptsMatch(m.Prompts, targetPrompts) {
+		if PromptsMatch(m.Prompts, targetPrompts) && PromptsMatch(m.Patches, targetPatches) {
 			return
 		}
 	}
@@ -108,8 +119,8 @@ func EnsurePatchedSilently(realBin string) {
 	// 2. If size or mtime changed: Compute SHA256 of current file to verify
 	currentSHA, err := FileSHA256(realBin)
 	if err == nil && metaReadOk && m.RealBin == realBin && m.SHA256 != "" && currentSHA == m.SHA256 {
-		if PromptsMatch(m.Prompts, targetPrompts) {
-			// SHA256 matches cached patched record & prompts match -> Already patched!
+		if PromptsMatch(m.Prompts, targetPrompts) && PromptsMatch(m.Patches, targetPatches) {
+			// SHA256 matches cached patched record & prompts/patches match -> Already patched!
 			m.Mtime = fi.ModTime().Unix()
 			m.Size = fi.Size()
 			if data, err := json.Marshal(m); err == nil {
@@ -136,6 +147,7 @@ func EnsurePatchedSilently(realBin string) {
 			Mtime:   fiNew.ModTime().Unix(),
 			SHA256:  newSHA,
 			Prompts: targetPrompts,
+			Patches: targetPatches,
 		}
 		if data, err := json.Marshal(newMeta); err == nil {
 			_ = os.WriteFile(metaFile, data, 0644)

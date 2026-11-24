@@ -74,3 +74,11 @@ func TestGetTargetPromptsSHA256(t *testing.T) {
 		t.Fatalf("expected 64-char hex sha256 for grill-me, got: %s", hash)
 	}
 }
+
+func TestGetTargetStringPatchesSHA256(t *testing.T) {
+	patches := GetTargetStringPatchesSHA256()
+	hash, ok := patches["disable-play-logging"]
+	if !ok || len(hash) != 64 {
+		t.Fatalf("expected 64-char hex sha256 for disable-play-logging, got: %s", hash)
+	}
+}
