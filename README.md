@@ -6,14 +6,15 @@ Transparent wrapper and automated binary patcher for the Google Antigravity CLI 
 
 ## Overview
 
-`agy-wrapper` automatically locates the upstream `agy` binary in your `PATH`, patches custom prompt definitions (supporting PE, ELF, and Mach-O executables), and caches metadata so that daily runs execute with zero latency overhead (~0ms).
+`agy-wrapper` automatically locates the upstream `agy` binary in your `PATH`, patches custom prompt definitions and in-place string replacements (supporting PE, ELF, and Mach-O executables), and caches metadata so that daily runs execute with zero latency overhead (~0ms).
 
 ## Features
 
-- **Automated Patching**: Patches prompts directly in the original binary without corrupting ELF/PE/Mach-O layout.
+- **Automated Patching**: Patches prompts and in-place binary strings directly in the original binary without corrupting ELF/PE/Mach-O layout.
+- **Telemetry / Logging Opt-Out**: Replaces `https://play.googleapis.com/log` with `http://0.0.0.0/logging-disabled` in-place to disable Google Play logging.
 - **Fail-Safe Verification**: Aborts cleanly if the upstream binary prompt has changed or checksum does not match.
 - **Prompt Extraction**: Export embedded prompts directly from `agy` (`--extract-prompt`).
-- **Fast Path Cache**: Stores SHA256 & mod-time metadata in `~/.gemini/.latest-patched-version` for instant subsequent executions.
+- **Fast Path Cache**: Stores SHA256, mod-time, and patch hash metadata in `~/.gemini/.latest-patched-version` for instant subsequent executions.
 - **Transparent Proxy**: Preserves all CLI arguments, stdio streams (`stdin`, `stdout`, `stderr`), and process exit codes.
 - **Automatic Setup**: Automatically registers its directory to user `PATH` on first run.
 
@@ -35,6 +36,14 @@ Transparent wrapper and automated binary patcher for the Google Antigravity CLI 
 
 > [!TIP]
 > **Extensible to Other Prompts**: This binary patching and memory relocation approach is not limited to `/grill-me`. It can be readily applied to many other system prompts and slash commands within the Antigravity CLI (such as `/plan`, `/learn`, `/teamwork-preview`, `/browser`, etc.). You can inspect and extract any embedded prompt using `agy --extract-prompt`, customize it, and configure additional tools in the wrapper engine.
+
+---
+
+## Active String Patches
+
+In addition to prompt patches, `agy-wrapper` applies equal-length in-place binary string replacements:
+
+- **`disable-play-logging`**: Replaces all occurrences of `https://play.googleapis.com/log` with `http://0.0.0.0/logging-disabled` (31 bytes each) to disable telemetry/logging uploads. If the target string is already patched or absent in a build, it is skipped safely.
 
 ---
 
