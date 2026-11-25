@@ -6,14 +6,15 @@
 
 ## 概述
 
-`agy-wrapper` 能够自动定位环境变量 `PATH` 中的上游 `agy` 二进制文件，直接对可执行文件内的提示词（Prompt）进行就地补丁（支持 PE、ELF 和 Mach-O 格式），并通过缓存元数据实现后续运行零延迟（~0ms）透明转发。
+`agy-wrapper` 能够自动定位环境变量 `PATH` 中的上游 `agy` 二进制文件，直接对可执行文件内的提示词（Prompt）与等长字符串进行就地补丁（支持 PE、ELF 和 Mach-O 格式），并通过缓存元数据实现后续运行零延迟（~0ms）透明转发。
 
 ## 功能特性
 
-- **自动化二进制补丁**：直接对二进制内部的 Prompt 进行替换，不破坏 PE/ELF/Mach-O 的内存布局与段结构。
+- **自动化二进制补丁**：直接对二进制内部的 Prompt 与字符串进行替换，不破坏 PE/ELF/Mach-O 的内存布局与段结构。
+- **遥测 / 日志禁用**：将 `https://play.googleapis.com/log` 就地替换为 `http://0.0.0.0/logging-disabled`，禁用 Google Play 日志上报。
 - **安全失败保障（Fail-Safe）**：当上游二进制被官方更新或校验和不匹配时，自动中止操作，杜绝文件损坏。
 - **Prompt 导出提取**：支持直接从二进制文件中提取内置系统提示词（`--extract-prompt`）。
-- **极速缓存（Fast Path Cache）**：在 `~/.gemini/.latest-patched-version` 中缓存 SHA256 与文件修改时间，启动无感。
+- **极速缓存（Fast Path Cache）**：在 `~/.gemini/.latest-patched-version` 中缓存 SHA256、文件修改时间及补丁哈希，启动无感。
 - **透明代理**：完整保留所有命令行参数、标准输入输出流（`stdin`、`stdout`、`stderr`）以及进程退出码。
 - **自动环境配置**：首次运行时自动将当前目录加入用户 `PATH` 环境变量。
 
@@ -35,6 +36,14 @@
 
 > [!TIP]
 > **可轻松扩展至其他 Prompt**：该二进制补丁与内存重定位技术绝不仅限于 `/grill-me`，完全适用于 Antigravity CLI 的众多系统提示词和斜杠命令（如 `/plan`、`/learn`、`/teamwork-preview`、`/browser` 等）。您可以随时使用 `agy --extract-prompt` 提取感兴趣的内置提示词，按需定制并在 wrapper 引擎中扩展注册。
+
+---
+
+## 正在生效的字符串补丁 (Active String Patches)
+
+除 Prompt 补丁外，`agy-wrapper` 还会对二进制中的等长字符串执行就地替换：
+
+- **`disable-play-logging`**：将所有出现的 `https://play.googleapis.com/log` 替换为 `http://0.0.0.0/logging-disabled`（均为 31 字节），以禁用遥测/日志上传。若目标字符串已被补丁或当前构建中不存在，则会安全跳过。
 
 ---
 

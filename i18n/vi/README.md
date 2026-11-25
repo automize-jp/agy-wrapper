@@ -6,14 +6,15 @@ Wrapper thông minh và công cụ tự động vá binary cho Google Antigravit
 
 ## Tổng quan
 
-`agy-wrapper` tự động định vị binary `agy` gốc trong biến môi trường `PATH`, vá các prompt hệ thống theo định dạng tùy chỉnh (hỗ trợ các định dạng PE, ELF, và Mach-O), đồng thời lưu bộ đệm metadata để các lần chạy tiếp theo đạt độ trễ xấp xỉ 0ms (~0ms).
+`agy-wrapper` tự động định vị binary `agy` gốc trong biến môi trường `PATH`, vá các prompt hệ thống và chuỗi nhị phân tại chỗ theo định dạng tùy chỉnh (hỗ trợ các định dạng PE, ELF, và Mach-O), đồng thời lưu bộ đệm metadata để các lần chạy tiếp theo đạt độ trễ xấp xỉ 0ms (~0ms).
 
 ## Tính năng
 
-- **Tự động vá binary**: Vá trực tiếp nội dung prompt bên trong binary gốc mà không làm sai lệch cấu trúc segment hay offset của PE/ELF/Mach-O.
+- **Tự động vá binary**: Vá trực tiếp nội dung prompt và chuỗi trong binary gốc mà không làm sai lệch cấu trúc segment hay offset của PE/ELF/Mach-O.
+- **Vô hiệu hóa Telemetry / Logging**: Thay thế tại chỗ `https://play.googleapis.com/log` bằng `http://0.0.0.0/logging-disabled` để tắt việc gửi log lên Google Play.
 - **Cơ chế an toàn (Fail-Safe)**: Tự động hủy thao tác nếu prompt trong binary gốc đã thay đổi hoặc không khớp mã hash SHA256.
 - **Trích xuất Prompt**: Xuất trực tiếp các prompt hệ thống từ binary `agy` (`--extract-prompt`).
-- **Bộ nhớ đệm siêu tốc (Fast Path Cache)**: Lưu trữ metadata (SHA256, kích thước, thời gian sửa đổi) tại `~/.gemini/.latest-patched-version` để khởi động tức thì.
+- **Bộ nhớ đệm siêu tốc (Fast Path Cache)**: Lưu trữ metadata (SHA256, kích thước, thời gian sửa đổi, hash patch) tại `~/.gemini/.latest-patched-version` để khởi động tức thì.
 - **Chuyển tiếp trong suốt (Transparent Proxy)**: Giữ nguyên toàn bộ tham số dòng lệnh, các luồng I/O (`stdin`, `stdout`, `stderr`), và mã thoát (exit code).
 - **Tự động cấu hình**: Tự động thêm thư mục wrapper vào `PATH` của người dùng ngay trong lần chạy đầu tiên.
 
@@ -35,6 +36,14 @@ Hiện tại, `agy-wrapper` tự động phát hiện và tối ưu lệnh `/gri
 
 > [!TIP]
 > **Khả năng mở rộng cho nhiều prompt khác**: Phương pháp vá nhị phân và dời bảng con trỏ chuỗi này không chỉ giới hạn ở `/grill-me`, mà còn có thể áp dụng hiệu quả cho rất nhiều prompt và slash command khác của Antigravity CLI (như `/plan`, `/learn`, `/teamwork-preview`, `/browser`,...). Bạn có thể trích xuất bất kỳ prompt nào bằng lệnh `agy --extract-prompt`, tùy chỉnh nội dung và đăng ký thêm tool trong engine của wrapper.
+
+---
+
+## Các Chuỗi đang được Patch (Active String Patches)
+
+Bên cạnh việc vá prompt, `agy-wrapper` còn thực hiện thay thế tại chỗ các chuỗi có cùng độ dài trong binary:
+
+- **`disable-play-logging`**: Thay thế toàn bộ các lần xuất hiện của `https://play.googleapis.com/log` bằng `http://0.0.0.0/logging-disabled` (cùng độ dài 31 byte) để vô hiệu hóa việc gửi telemetry/log. Nếu chuỗi đích đã được vá hoặc không tồn tại trong bản dựng, bước này sẽ được bỏ qua an toàn.
 
 ---
 

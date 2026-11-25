@@ -6,14 +6,15 @@ Google Antigravity CLI (`agy`)를 위한 투명 래퍼 및 자동 바이너리 �
 
 ## 개요
 
-`agy-wrapper`는 시스템 `PATH`에서 원본 `agy` 바이너리를 자동으로 감지하고, 커스텀 프롬프트 정의를 바이너리에 직접 패치(PE, ELF, Mach-O 지원)하며, 메타데이터를 캐싱하여 일상적인 실행 시 지연 시간 0ms(~0ms)로 투명하게 프록시 실행합니다.
+`agy-wrapper`는 시스템 `PATH`에서 원본 `agy` 바이너리를 자동으로 감지하고, 커스텀 프롬프트 정의 및 인플레이스 문자열 치환을 바이너리에 직접 패치(PE, ELF, Mach-O 지원)하며, 메타데이터를 캐싱하여 일상적인 실행 시 지연 시간 0ms(~0ms)로 투명하게 프록시 실행합니다.
 
 ## 주요 기능
 
-- **자동 바이너리 패치**: PE/ELF/Mach-O의 메모리 레이아웃이나 세그먼트 손상 없이 바이너리 내부 프롬프트를 안전하게 패치합니다.
+- **자동 바이너리 패치**: PE/ELF/Mach-O의 메모리 레이아웃이나 세그먼트 손상 없이 바이너리 내부 프롬프트 및 문자열을 안전하게 패치합니다.
+- **텔레메트리 / 로깅 비활성화**: `https://play.googleapis.com/log`를 `http://0.0.0.0/logging-disabled`로 인플레이스 치환하여 Google Play 로깅 전송을 차단합니다.
 - **안전 검증 (Fail-Safe)**: 업스트림 바이너리의 프롬프트가 변경되었거나 체크섬이 일치하지 않을 경우 안전하게 작업을 중단합니다.
 - **프롬프트 추출**: `agy` 바이너리에서 내장된 시스템 프롬프트를 직접 추출합니다 (`--extract-prompt`).
-- **고속 캐시 (Fast Path Cache)**: SHA256 및 수정 시간 메타데이터를 `~/.gemini/.latest-patched-version`에 저장하여 즉시 실행합니다.
+- **고속 캐시 (Fast Path Cache)**: SHA256, 수정 시간 및 패치 해시 메타데이터를 `~/.gemini/.latest-patched-version`에 저장하여 즉시 실행합니다.
 - **투명 프록시 (Transparent Proxy)**: 모든 CLI 인자, 표준 입출력 스트림(`stdin`, `stdout`, `stderr`) 및 종료 코드를 그대로 보존합니다.
 - **자동 환경 설정**: 최초 실행 시 현재 디렉터리를 사용자 `PATH`에 자동으로 등록합니다.
 
@@ -35,6 +36,14 @@ Google Antigravity CLI (`agy`)를 위한 투명 래퍼 및 자동 바이너리 �
 
 > [!TIP]
 > **다양한 프롬프트로의 확장 가능성**: 이 바이너리 패치 및 메모리 재배치 기법은 `/grill-me`에만 국한되지 않으며, Antigravity CLI의 다양한 시스템 프롬프트 및 슬래시 명령어(`/plan`, `/learn`, `/teamwork-preview`, `/browser` 등)에도 즉시 응용될 수 있습니다. `agy --extract-prompt`로 원하는 프롬프트를 추출하여 커스텀한 후 래퍼 엔진에 도구를 추가 등록하면 됩니다.
+
+---
+
+## 현재 적용된 문자열 패치 (Active String Patches)
+
+프롬프트 패치 외에도 `agy-wrapper`는 동일 길이의 바이너리 문자열을 인플레이스로 치환합니다:
+
+- **`disable-play-logging`**: `https://play.googleapis.com/log`의 모든 항목을 `http://0.0.0.0/logging-disabled`(각 31바이트)로 치환하여 텔레메트리/로깅 업로드를 비활성화합니다. 대상 문자열이 이미 패치되었거나 빌드에 존재하지 않는 경우 안전하게 건너뜁니다.
 
 ---
 
